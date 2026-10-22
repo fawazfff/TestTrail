@@ -64,7 +64,7 @@ export default function App() {
  }, []);
 
  useEffect(() => {
-  const onPop = () => { const p = location.pathname.split("/").filter(Boolean); setView(p[0] === "i" ? "inbox" : p[0] === "test" ? "tester" : "overview"); if ((p[0] === "t" || p[0] === "test" || p[0] === "i") && p[1]) setActiveSlug(p[1]); };
+  const onPop = () => { const p = location.pathname.split("/").filter(Boolean); setView(p[0] === "i" ? "inbox" : p[0] === "new" ? "create" : p[0] === "test" ? "tester" : "overview"); if ((p[0] === "t" || p[0] === "test" || p[0] === "i") && p[1]) setActiveSlug(p[1]); };
   addEventListener("popstate", onPop); return () => removeEventListener("popstate", onPop);
  }, []);
 

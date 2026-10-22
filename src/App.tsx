@@ -114,22 +114,17 @@ export default function App() {
  async function submitReport(e: React.FormEvent) {
   e.preventDefault();
   if (!activeRun || !reportSummary.trim()) { setNotice("Add a short summary before submitting."); return; }
-  if (!supabase || !activeRun.id) { setNotice("This test link is not connected to a saved project. Ask the developer for a current link."); return; }
   setSubmitting(true); setNotice("");
   try {
-   let screenshotUrl: string | null = null;
-   if (screenshot && supabase) {
+   let screenshotPayload: {type:string;data:string}|undefined;
+   if (screenshot) {
     if (screenshot.size > 5 * 1024 * 1024) throw new Error("Screenshot must be 5 MB or smaller.");
-    const safeName = screenshot.name.replace(/[^a-zA-Z0-9._-]/g, "-");
-    const key = activeRun.slug + "/" + Date.now() + "-" + safeName;
-    const { error } = await supabase.storage.from("test-screenshots").upload(key, screenshot, { upsert: false, contentType: screenshot.type });
-    if (error) throw new Error("Screenshot upload failed. Create a public Storage bucket named test-screenshots or submit without the screenshot.");
-    screenshotUrl = supabase.storage.from("test-screenshots").getPublicUrl(key).data.publicUrl;
+    if (!["image/png","image/jpeg","image/webp"].includes(screenshot.type)) throw new Error("Use a PNG, JPG, or WebP screenshot.");
+    screenshotPayload = { type: screenshot.type, data: toBase64Url(new Uint8Array(await screenshot.arrayBuffer())) };
    }
    let signature: string | null = null;
-   const runId = activeRun.id || activeRun.slug;
-   const report: Report = { run_id: runId, status: reportStatus, summary: reportSummary.trim(), details: reportDetails.trim(), screenshot_url: screenshotUrl };
-   { const { data, error } = await supabase.from("test_reports").insert({ ...report, run_id: activeRun.id }).select().single(); if (error) throw new Error("Could not save the report. Check the Supabase schema and policies."); Object.assign(report, data); }
+   const result = await api("submit-report", { slug: activeRun.slug, status: reportStatus, summary: reportSummary.trim(), details: reportDetails.trim(), screenshot: screenshotPayload });
+   const report = result.report as Report;
    if (receipt && wallet && window.solana?.signTransaction) {
     try {
      const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
@@ -147,7 +142,7 @@ export default function App() {
      if (supabase && report.id) await supabase.from("test_reports").update({ receipt_signature: signature }).eq("id", report.id);
     } catch (err) { setNotice(err instanceof Error ? err.message : "Receipt was not published. The report itself was saved."); }
    }
-   setReports(prev => [report, ...prev]);
+   if (sessionToken) setReports(prev => [report, ...prev]);
    setReportSummary(""); setReportDetails(""); setScreenshot(null);
    setNotice(signature ? "Feedback sent with a confirmed Devnet receipt." : "Feedback sent. Thanks for helping test this app!");
   } catch (err) { setNotice(err instanceof Error ? err.message : "Could not submit this report."); }

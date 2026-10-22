@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Buffer } from "buffer";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { Connection, PublicKey, Transaction, TransactionInstruction, clusterApiUrl } from "@solana/web3.js";
 import { Activity, ArrowDownRight, ArrowUpRight, Check, CheckCircle2, ChevronDown, CircleHelp, Clipboard, ExternalLink, FileCheck2, FlaskConical, Globe2, ImagePlus, Link2, LoaderCircle, Menu, Plus, Search, ShieldCheck, Sparkles, Unplug, Wallet, X, XCircle } from "lucide-react";
@@ -127,7 +128,7 @@ export default function App() {
      const tx = new Transaction().add(new TransactionInstruction({
       keys: [{ pubkey: payer, isSigner: true, isWritable: false }],
       programId: new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"),
-      data: new TextEncoder().encode(JSON.stringify({ app: "TestTrail", run: activeRun.slug, status: reportStatus, summary: reportSummary.trim().slice(0, 180) }))
+      data: Buffer.from(JSON.stringify({ app: "TestTrail", run: activeRun.slug, status: reportStatus, summary: reportSummary.trim().slice(0, 180) }), "utf8")
      }));
      tx.feePayer = payer; tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
      const signed = await window.solana.signTransaction(tx);

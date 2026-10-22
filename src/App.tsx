@@ -30,7 +30,7 @@ export default function App() {
  const [runs, setRuns] = useState<Run[]>(demoRuns);
  const [reports, setReports] = useState<Report[]>(demoReports);
  const [activeSlug, setActiveSlug] = useState(() => location.pathname.split("/").filter(Boolean)[1] || "solana-2048");
- const [view, setView] = useState<"overview"|"inbox"|"create">("overview");
+ const [view, setView] = useState<"overview"|"inbox"|"create">(() => location.pathname.split("/").filter(Boolean)[0] === "i" ? "inbox" : location.pathname.split("/").filter(Boolean)[0] === "new" ? "create" : "overview");
  const [search, setSearch] = useState("");
  const [wallet, setWallet] = useState("");
  const [walletBusy, setWalletBusy] = useState(false);

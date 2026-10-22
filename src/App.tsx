@@ -127,7 +127,7 @@ export default function App() {
      const tx = new Transaction().add(new TransactionInstruction({
       keys: [{ pubkey: payer, isSigner: true, isWritable: false }],
       programId: new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"),
-      data: Buffer.from(JSON.stringify({ app: "TestTrail", run: activeRun.slug, status: reportStatus, summary: reportSummary.trim().slice(0, 180) }), "utf8")
+      data: new TextEncoder().encode(JSON.stringify({ app: "TestTrail", run: activeRun.slug, status: reportStatus, summary: reportSummary.trim().slice(0, 180) }))
      }));
      tx.feePayer = payer; tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
      const signed = await window.solana.signTransaction(tx);

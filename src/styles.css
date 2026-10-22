@@ -24,3 +24,57 @@
 .target-actions .card-action{flex:1;justify-content:center;white-space:nowrap}
 @media(max-width:1000px){.target-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.target-grid{grid-template-columns:1fr}.target-description{min-height:0}.target-actions .card-action{font-size:11px;padding:10px 8px}}
+
+/* TestTrail motion system: quick feedback, quiet depth, reduced-motion friendly */
+:root{--ease-out:cubic-bezier(.16,1,.3,1);--ease-ui:cubic-bezier(.2,.8,.2,1)}
+html{scroll-behavior:smooth;scroll-padding-top:86px}
+button,a,.target-card,.run-card,.stat-card,.report-row,.form-panel{-webkit-tap-highlight-color:transparent}
+button{transition:transform 180ms var(--ease-out),background-color 180ms ease,border-color 180ms ease,color 180ms ease,box-shadow 180ms ease}
+button:active{transform:scale(.975)}
+.nav-item,.run-nav-item,.card-action,.icon-button,.more-button,.favorite-star,.favorite-filter,.favorite-link{transition:transform 200ms var(--ease-out),background-color 180ms ease,border-color 180ms ease,color 180ms ease,box-shadow 200ms ease}
+.page.enter{animation:page-arrive 520ms var(--ease-out) both}
+.page.enter .page-heading{animation:content-arrive 620ms var(--ease-out) both}
+.page.enter .hero-art{animation:art-arrive 800ms var(--ease-out) 70ms both}
+.hero-art .art-sheet{animation:sheet-float 7s ease-in-out 1s infinite}
+.hero-art .art-stamp{animation:stamp-arrive 600ms var(--ease-out) 360ms both,stamp-float 6s ease-in-out 1.1s infinite}
+.art-orbit{animation:orbit-breathe 8s ease-in-out infinite alternate}
+.art-orbit.orbit-two{animation-delay:-3s}
+.art-cross{animation:cross-fade 5s ease-in-out infinite alternate}
+.target-card,.run-card,.stat-card,.report-row{animation:card-arrive 520ms var(--ease-out) both;animation-delay:var(--stagger,0ms)}
+.target-card{transform:translateZ(0);transition:transform 260ms var(--ease-out),border-color 220ms ease,box-shadow 260ms var(--ease-out)}
+.target-card:hover{transform:translateY(-4px);box-shadow:0 14px 36px #17233b0d}
+.card-action:hover,.favorite-link:hover{transform:translateY(-1px)}
+.primary-button{transition:transform 180ms var(--ease-out),box-shadow 220ms var(--ease-out),background-color 180ms ease}
+.primary-button:hover{box-shadow:0 7px 18px #315fe925}
+.project-icon{transition:transform 240ms var(--ease-out),background-color 200ms ease}
+.target-card:hover .project-icon{transform:scale(1.06) rotate(-3deg)}
+.notice{animation:notice-arrive 260ms var(--ease-out) both}
+.favorites-bar{display:flex;align-items:flex-start;gap:18px;padding:15px 17px;margin:18px 0 4px;border:1px solid #e8ebf0;border-radius:13px;background:linear-gradient(110deg,#fff 0%,#fbfcff 100%);box-shadow:0 2px 7px #20252d03}
+.favorites-label{display:flex;align-items:center;gap:8px;padding-top:7px;color:#68748a;font:500 10px 'DM Mono',monospace;letter-spacing:.08em;white-space:nowrap}
+.favorites-label svg{color:#c18a36}
+.favorite-links{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.favorite-link{display:inline-flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #e8ebf0;border-radius:8px;background:#fff;color:#394252;font-size:11px;font-weight:550}
+.favorite-link svg{color:#929aa8}
+.favorite-link-dot{width:6px;height:6px;border-radius:50%;background:#4cbd8b;box-shadow:0 0 0 3px #4cbd8b18}
+.favorites-empty{font-size:12px;color:var(--muted)}
+.favorite-filter{display:inline-flex;align-items:center;gap:7px;padding:9px 11px;border:1px solid #e5e8ef;border-radius:9px;background:#fff;color:#5d6676;font-size:11px;white-space:nowrap}
+.favorite-filter span{display:grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:5px;background:#f0f2f6;font:10px 'DM Mono',monospace}
+.favorite-filter.is-active{background:#fff9ec;border-color:#f0dfbb;color:#9a6b1d}
+.favorite-star{display:grid;place-items:center;width:31px;height:31px;border:1px solid transparent;border-radius:8px;background:transparent;color:#a1a8b4}
+.favorite-star:hover{background:#f5f6f8;border-color:#e8ebf0;color:#8e6c2d}
+.favorite-star.is-favorite{background:#fff8e8;color:#b17b22;border-color:#f3e5c5}
+.target-card-tools{display:flex;align-items:center;gap:7px}
+.target-category{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@keyframes page-arrive{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes content-arrive{from{opacity:0;transform:translateY(13px)}to{opacity:1;transform:translateY(0)}}
+@keyframes art-arrive{from{opacity:0;transform:translateY(14px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes card-arrive{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes notice-arrive{from{opacity:0;transform:translateY(-7px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes stamp-arrive{from{opacity:0;transform:translateY(8px) scale(.94)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes sheet-float{0%,100%{transform:translateY(0) rotate(-1deg)}50%{transform:translateY(-5px) rotate(0deg)}}
+@keyframes stamp-float{0%,100%{margin-top:0}50%{margin-top:-4px}}
+@keyframes orbit-breathe{from{opacity:.45;transform:scale(.985)}to{opacity:.9;transform:scale(1.015)}}
+@keyframes cross-fade{from{opacity:.25}to{opacity:.7}}
+@media(hover:hover) and (pointer:fine){.nav-item:hover,.run-nav-item:hover{transform:translateX(2px)}.favorite-link:hover{border-color:#d9dfeb;box-shadow:0 5px 14px #20252d08}}
+@media(max-width:760px){.favorites-bar{flex-direction:column;gap:10px}.favorites-label{padding-top:0}.favorite-filter{padding:8px}.directory-heading{align-items:flex-start}.target-card-tools{gap:3px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.target-card:hover,.card-action:hover,.favorite-link:hover{transform:none}}

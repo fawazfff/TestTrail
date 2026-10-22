@@ -123,6 +123,7 @@ export default function App() {
     screenshotPayload = { type: screenshot.type, data: toBase64Url(new Uint8Array(await screenshot.arrayBuffer())) };
    }
    let signature: string | null = null;
+   let receiptWarning = "";
    const result = await api("submit-report", { slug: activeRun.slug, status: reportStatus, summary: reportSummary.trim(), details: reportDetails.trim(), screenshot: screenshotPayload });
    const report = result.report as Report;
    if (receipt && wallet && window.solana?.signTransaction) {
@@ -139,12 +140,12 @@ export default function App() {
      signature = await connection.sendRawTransaction(signed.serialize());
      await connection.confirmTransaction(signature, "confirmed");
      report.receipt_signature = signature;
-     if (supabase && report.id) await supabase.from("test_reports").update({ receipt_signature: signature }).eq("id", report.id);
-    } catch (err) { setNotice(err instanceof Error ? err.message : "Receipt was not published. The report itself was saved."); }
+     if (sessionToken && report.id) await api("save-receipt", { report_id: report.id, signature }, sessionToken);
+    } catch (err) { receiptWarning = err instanceof Error ? err.message : "Receipt was not published. The report itself was saved."; }
    }
    if (sessionToken) setReports(prev => [report, ...prev]);
    setReportSummary(""); setReportDetails(""); setScreenshot(null);
-   setNotice(signature ? "Feedback sent with a confirmed Devnet receipt." : "Feedback sent. Thanks for helping test this app!");
+   setNotice(receiptWarning || (signature ? "Feedback sent with a confirmed Devnet receipt." : "Feedback sent. Thanks for helping test this app!"));
   } catch (err) { setNotice(err instanceof Error ? err.message : "Could not submit this report."); }
   finally { setSubmitting(false); }
  }

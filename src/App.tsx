@@ -13,15 +13,6 @@ declare global { interface Window { solana?: WalletProvider } }
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 const supabase: SupabaseClient | null = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
-const demoRuns: Run[] = [
- { slug: "solana-2048", title: "Solana 2048", app_url: "https://solana2048.com", description: "Check game controls, wallet prompts, and transaction feedback.", created_at: new Date().toISOString() },
- { slug: "wallet-onboarding", title: "Wallet onboarding flow", app_url: "https://example.com", description: "Review connection, cancellation, and error states.", created_at: new Date(Date.now()-86400000).toISOString() }
-];
-const demoReports: Report[] = [
- { run_id: "solana-2048", status: "passed", summary: "Game loads and controls respond", details: "Tested the main game loop on desktop.", created_at: new Date().toISOString() },
- { run_id: "solana-2048", status: "blocked", summary: "Wallet prompt unclear", details: "Could not tell whether the connection request was optional.", created_at: new Date(Date.now()-3600000).toISOString() },
- { run_id: "wallet-onboarding", status: "failed", summary: "Cancel leaves loading state visible", details: "After cancelling the wallet prompt, the spinner remained.", created_at: new Date(Date.now()-86400000).toISOString() }
-];
 const makeSlug = () => Math.random().toString(36).slice(2, 10);
 const shortDate = (value?: string) => value ? new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "Just now";
 const statusLabel: Record<Status, string> = { passed: "Passed", failed: "Failed", blocked: "Blocked" };
@@ -29,7 +20,7 @@ const statusLabel: Record<Status, string> = { passed: "Passed", failed: "Failed"
 export default function App() {
  const [runs, setRuns] = useState<Run[]>([]);
  const [reports, setReports] = useState<Report[]>([]);
- const [activeSlug, setActiveSlug] = useState(() => location.pathname.split("/").filter(Boolean)[1] || "solana-2048");
+ const [activeSlug, setActiveSlug] = useState(() => location.pathname.split("/").filter(Boolean)[1] || "");
  const [ownerWallet, setOwnerWallet] = useState("");
  const [view, setView] = useState<"overview"|"inbox"|"create"|"tester">(() => location.pathname.split("/").filter(Boolean)[0] === "i" ? "inbox" : location.pathname.split("/").filter(Boolean)[0] === "new" ? "create" : location.pathname.split("/").filter(Boolean)[0] === "test" ? "tester" : "overview");
  const [search, setSearch] = useState("");
@@ -51,7 +42,7 @@ export default function App() {
  const [receipt, setReceipt] = useState(true);
  const [mobileMenu, setMobileMenu] = useState(false);
  const isConfigured = Boolean(supabase);
- const activeRun = runs.find(r => r.slug === activeSlug) || runs[0];
+ const activeRun = runs.find(r => r.slug === activeSlug);
  const activeReports = useMemo(() => reports.filter(r => r.run_id === (activeRun?.id || activeRun?.slug)), [reports, activeRun]);
  const allReports = reports.filter(report => { const run = runs.find(item => (item.id || item.slug) === report.run_id); return !run?.owner_wallet || !wallet || run.owner_wallet === wallet; });
  const filteredRuns = runs.filter(r => (!r.owner_wallet || r.owner_wallet === wallet) && (r.title + " " + r.app_url).toLowerCase().includes(search.toLowerCase()));
@@ -67,7 +58,7 @@ export default function App() {
    if (!alive) return;
    if (runData) setRuns(runData);
    if (reportData) setReports(reportData);
-   if (runData?.length && !runData.some((r: Run) => r.slug === activeSlug)) setActiveSlug(runData[0].slug);
+   if (runData?.length && !activeSlug && location.pathname.split("/").filter(Boolean)[0] !== "test") setActiveSlug(runData[0].slug);
   })().catch(() => setNotice("Could not load Supabase data. Check your project URL, anon key, and SQL setup."));
   return () => { alive = false; };
  }, []);
@@ -79,13 +70,13 @@ export default function App() {
 
  function navigate(nextView: "overview"|"inbox"|"create"|"tester", slug = activeSlug) {
   setView(nextView); setMobileMenu(false);
-  const path = nextView === "inbox" ? "/i/" + slug : nextView === "create" ? "/new" : nextView === "tester" ? "/test/" + slug : "/t/" + slug;
+  const path = nextView === "inbox" ? "/i/" + slug : nextView === "create" ? "/new" : nextView === "tester" ? "/test/" + slug : "/";
   history.pushState({}, "", path);
  }
  async function connectWallet() {
   if (!window.solana) { setNotice("Install a Solana wallet such as Phantom, then refresh this page."); return; }
   setWalletBusy(true);
-  try { const result = await window.solana.connect(); setWallet(result.publicKey.toString()); setOwnerWallet(result.publicKey.toString()); setNotice("Wallet connected."); }
+  try { const result = await window.solana.connect(); const address = result.publicKey.toString(); if (!window.solana.signMessage) throw new Error("This wallet cannot sign a login message. Try Phantom or another compatible wallet."); const challenge = new TextEncoder().encode("Sign in to TestTrail\nWallet: " + address + "\nOrigin: " + location.origin + "\nThis signature does not authorize a transaction."); await window.solana.signMessage(challenge, "utf8"); setWallet(address); setOwnerWallet(address); setNotice("Wallet connected and login message signed for this session."); }
   catch { setNotice("Wallet connection was cancelled."); }
   finally { setWalletBusy(false); }
  }
@@ -98,21 +89,20 @@ export default function App() {
   if (!wallet) { setNotice("Connect your Solana wallet before creating a test link."); return; }
   if (!createTitle.trim() || !/^https?:\/\//i.test(createUrl)) { setNotice("Add a project name and a valid http:// or https:// URL."); return; }
   const run: Run = { slug: makeSlug(), title: createTitle.trim(), app_url: createUrl.trim(), description: createDescription.trim(), network: "devnet", owner_wallet: wallet };
-  if (supabase) {
-   const { data, error } = await supabase.from("test_runs").insert(run).select().single();
-   if (error) { setNotice("Could not save this test run. Check the Supabase schema and access policies."); return; }
-   Object.assign(run, data);
-  }
+  if (!supabase) { setNotice("Database is not configured. TestTrail cannot save or share a real link yet."); return; }
+  { const { data, error } = await supabase.from("test_runs").insert(run).select().single(); if (error) { setNotice("Could not save this test run. Check Supabase access policies."); return; } Object.assign(run, data); }
   setRuns(prev => [run, ...prev]); setCreateTitle(""); setCreateUrl(""); setCreateDescription(""); setActiveSlug(run.slug);
   navigate("overview", run.slug); setNotice("Test link created. Copy the tester link and send it to your testers.");
  }
  async function submitReport(e: React.FormEvent) {
   e.preventDefault();
   if (!activeRun || !reportSummary.trim()) { setNotice("Add a short summary before submitting."); return; }
+  if (!supabase || !activeRun.id) { setNotice("This test link is not connected to a saved project. Ask the developer for a current link."); return; }
   setSubmitting(true); setNotice("");
   try {
    let screenshotUrl: string | null = null;
    if (screenshot && supabase) {
+    if (screenshot.size > 5 * 1024 * 1024) throw new Error("Screenshot must be 5 MB or smaller.");
     const safeName = screenshot.name.replace(/[^a-zA-Z0-9._-]/g, "-");
     const key = activeRun.slug + "/" + Date.now() + "-" + safeName;
     const { error } = await supabase.storage.from("test-screenshots").upload(key, screenshot, { upsert: false, contentType: screenshot.type });
@@ -122,11 +112,7 @@ export default function App() {
    let signature: string | null = null;
    const runId = activeRun.id || activeRun.slug;
    const report: Report = { run_id: runId, status: reportStatus, summary: reportSummary.trim(), details: reportDetails.trim(), screenshot_url: screenshotUrl };
-   if (supabase && activeRun.id) {
-    const { data, error } = await supabase.from("test_reports").insert({ ...report, run_id: activeRun.id }).select().single();
-    if (error) throw new Error("Could not save the report. Check the Supabase schema and policies.");
-    Object.assign(report, data);
-   }
+   { const { data, error } = await supabase.from("test_reports").insert({ ...report, run_id: activeRun.id }).select().single(); if (error) throw new Error("Could not save the report. Check the Supabase schema and policies."); Object.assign(report, data); }
    if (receipt && wallet && window.solana?.signTransaction) {
     try {
      const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
@@ -144,10 +130,9 @@ export default function App() {
      if (supabase && report.id) await supabase.from("test_reports").update({ receipt_signature: signature }).eq("id", report.id);
     } catch (err) { setNotice(err instanceof Error ? err.message : "Receipt was not published. The report itself was saved."); }
    }
-   if (!supabase || !activeRun.id) setReports(prev => [{ ...report, id: makeSlug(), created_at: new Date().toISOString() }, ...prev]);
-   else setReports(prev => [report, ...prev]);
+   setReports(prev => [report, ...prev]);
    setReportSummary(""); setReportDetails(""); setScreenshot(null);
-   if (!notice) setNotice(signature ? "Report saved with a confirmed Devnet receipt." : isConfigured ? "Report saved." : "Demo report added locally. Connect Supabase to persist reports.");
+   setNotice(signature ? "Feedback sent with a confirmed Devnet receipt." : "Feedback sent. Thanks for helping test this app!");
   } catch (err) { setNotice(err instanceof Error ? err.message : "Could not submit this report."); }
   finally { setSubmitting(false); }
  }
@@ -175,6 +160,7 @@ export default function App() {
    {notice && <div className="notice" role="status"><span>{notice}</span><button onClick={() => setNotice("")} aria-label="Dismiss message"><X size={15}/></button></div>}
    {view === "create" ? <section className="page page-narrow enter"><button className="back-link" onClick={() => navigate("overview")}><ArrowDownRight size={15}/> Back to overview</button><div className="page-heading"><div className="eyebrow"><Plus size={13}/> CREATE A TEST LINK</div><h1>Get your app<br/>tested by people.</h1><p>Add your app and tell testers exactly what to try. We will make a shareable link for them.</p></div>{!wallet && <div className="wallet-gate"><Wallet size={22}/><div><strong>First, connect your wallet</strong><p>Your wallet identifies your workspace so you can return to your projects.</p></div><button className="primary-button" type="button" onClick={connectWallet} disabled={walletBusy}>{walletBusy?"Connecting…":"Connect wallet"}</button></div>}<form className="form-panel" onSubmit={createRun}><label>Project name<input value={createTitle} onChange={e=>setCreateTitle(e.target.value)} placeholder="e.g. Solana 2048" required maxLength={80}/></label><label>Application URL<input value={createUrl} onChange={e=>setCreateUrl(e.target.value)} placeholder="https://your-dapp.com" type="url" required/></label><label>What should testers look for? <span className="optional">OPTIONAL</span><textarea value={createDescription} onChange={e=>setCreateDescription(e.target.value)} placeholder="Try wallet connection, complete a transaction, check mobile layout…" rows={4}/></label><div className="form-note"><ShieldCheck size={17}/><span>TestTrail uses Solana Devnet for optional test receipts. It will not move real funds.</span></div><button className="primary-button full-button" type="submit" disabled={!wallet || !isConfigured}>{!isConfigured?"Database setup required":!wallet?"Connect wallet to continue":"Create tester link"} <ArrowUpRight size={16}/></button>{!isConfigured && <p className="form-footnote">Persistent project links need the database connected. Your form will not pretend to save if it cannot.</p>}</form></section>
    : view === "inbox" ? <section className="page enter"><div className="page-heading compact-heading"><div className="eyebrow"><Clipboard size={13}/> TESTER FEEDBACK</div><h1>Report inbox<span className="period">.</span></h1><p>Every report in one place. Find what passed, what broke, and what needs another look.</p></div><div className="inbox-toolbar"><div className="search-box"><Search size={16}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search test runs or reports"/></div><button className="secondary-button" onClick={() => copyLink("/i/"+activeSlug)}><Link2 size={15}/> Copy inbox link</button></div><div className="report-list">{allReports.filter(r => {const run = runs.find(x => (x.id || x.slug) === r.run_id); return (r.summary+" "+r.details+" "+(run?.title||"")).toLowerCase().includes(search.toLowerCase());}).map((r,i) => {const run = runs.find(x => (x.id || x.slug) === r.run_id);return <article className="report-row" key={r.id || i}><div className={"status-icon "+r.status}>{r.status==="passed"?<CheckCircle2 size={17}/>:r.status==="failed"?<XCircle size={17}/>:<CircleHelp size={17}/>}</div><div className="report-main"><div className="report-title">{r.summary}</div><div className="report-meta"><span>{run?.title || "Test run"}</span><span>·</span><span>{shortDate(r.created_at)}</span></div>{r.details && <p>{r.details}</p>}{r.screenshot_url && <a className="attachment-link" href={r.screenshot_url} target="_blank" rel="noreferrer"><ImagePlus size={14}/> View screenshot <ExternalLink size={12}/></a>}{r.receipt_signature && <a className="attachment-link" href={"https://explorer.solana.com/tx/"+r.receipt_signature+"?cluster=devnet"} target="_blank" rel="noreferrer"><FileCheck2 size={14}/> Devnet receipt <ExternalLink size={12}/></a>}</div><span className={"status-pill "+r.status}>{statusLabel[r.status]}</span></article>})}{allReports.length===0 && <div className="empty-state"><Clipboard size={25}/><h3>No reports yet</h3><p>When testers submit feedback, it will appear here.</p></div>}</div></section>
+   : view === "tester" ? <section className="page page-narrow enter">{activeRun ? <><button className="back-link" onClick={()=>navigate("overview")}><ArrowDownRight size={15}/> Back to TestTrail</button><div className="page-heading"><div className="eyebrow"><span className="eyebrow-dot"/> YOU'RE A TESTER</div><h1>Let's try {activeRun.title}<span className="period">.</span></h1><p>Follow the steps below, try the app, and tell the developer what happened. No wallet needed.</p></div><div className="form-panel tester-steps"><div className="step-line"><span>1</span><div><strong>Open the app</strong><p>Keep this page open so you can come back to send your feedback.</p><a className="open-app-link" href={activeRun.app_url} target="_blank" rel="noreferrer">Open {activeRun.title} <ExternalLink size={14}/></a></div></div><div className="step-line"><span>2</span><div><strong>Try these things</strong><p>{activeRun.description || "Try the main features. Notice anything confusing, broken, or surprisingly good."}</p></div></div><div className="step-line"><span>3</span><div><strong>Tell us how it went</strong><p>Choose a result, describe what happened, and attach a screenshot if it helps.</p></div></div></div><form className="report-form tester-public-form" onSubmit={submitReport}><div className="form-title">Your feedback <span>NO WALLET NEEDED</span></div><label>How did it go?</label><div className="status-select">{(["passed","failed","blocked"] as Status[]).map(s=><button type="button" key={s} onClick={()=>setReportStatus(s)} className={"status-option "+(reportStatus===s?"chosen "+s:"")}><span className={"status-option-icon "+s}>{s==="passed"?<CheckCircle2 size={16}/>:s==="failed"?<XCircle size={16}/>:<CircleHelp size={16}/>}</span>{statusLabel[s]}</button>)}</div><label>What happened?<input value={reportSummary} onChange={e=>setReportSummary(e.target.value)} placeholder="e.g. The connect button did not work" required maxLength={180}/></label><label>More details <span className="optional">OPTIONAL</span><textarea value={reportDetails} onChange={e=>setReportDetails(e.target.value)} rows={3} placeholder="What did you click? What did you expect? What happened instead?"/></label><label className="upload-zone"><input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>setScreenshot(e.target.files?.[0]||null)}/><ImagePlus size={18}/><span><strong>{screenshot?screenshot.name:"Add a screenshot"}</strong><small>PNG, JPG or WebP, up to 5 MB</small></span><Plus size={17}/></label><button className="primary-button full-button" type="submit" disabled={submitting}>{submitting?"Sending feedback…":"Send feedback"} <ArrowUpRight size={16}/></button></form></> : <div className="empty-state"><h3>We couldn't find this test</h3><p>Check that the link is correct, or ask the developer to send you a new one.</p></div>}</section>
    : <section className="page enter">
     <div className="hero-row"><div className="page-heading"><div className="eyebrow"><span className="eyebrow-dot"/> SOLANA DAPP TESTING</div><h1>Ship with<br/>fewer surprises<span className="period">.</span></h1><p>A clear picture of what works, what breaks, and what real people experience in your dApp.</p><div className="hero-buttons"><button className="primary-button" onClick={() => navigate("create")}>Create a test run <ArrowUpRight size={16}/></button><button className="text-button" onClick={() => navigate("inbox")}>View all reports <ArrowUpRight size={15}/></button></div></div><div className="hero-art" aria-label="Illustration of a verified test report"><div className="art-orbit orbit-one"/><div className="art-orbit orbit-two"/><div className="art-cross cross-a"/><div className="art-cross cross-b"/><div className="art-sheet"><div className="art-sheet-top"><span className="mini-mark"><FlaskConical size={13}/></span><span>TEST REPORT</span><span className="art-check"><Check size={13}/></span></div><div className="art-lines"><i/><i/><i/></div><div className="art-result"><CheckCircle2 size={19}/><div><strong>Everything checks out</strong><span>Verified on Devnet</span></div></div><div className="art-footer"><span>TESTTRAIL / 001</span><span>CONFIRMED</span></div></div><div className="art-stamp"><ShieldCheck size={20}/><span>VERIFIED<br/>RECEIPT</span></div><div className="art-caption">A better trail from test to fix.</div></div></div>
     <div className="stats-grid"><div className="stat-card"><div className="stat-label">TEST RUNS <FlaskConical size={15}/></div><div className="stat-number">{runs.length.toString().padStart(2,"0")}</div><div className="stat-foot">Projects being tested</div></div><div className="stat-card"><div className="stat-label">PASSED <CheckCircle2 size={15}/></div><div className="stat-number">{passed.toString().padStart(2,"0")}<span className="stat-trend positive"><ArrowUpRight size={13}/></span></div><div className="stat-foot">Checks that worked</div></div><div className="stat-card"><div className="stat-label">NEEDS ATTENTION <Activity size={15}/></div><div className="stat-number">{(failed+blocked).toString().padStart(2,"0")}<span className="stat-trend caution"><ArrowDownRight size={13}/></span></div><div className="stat-foot">Failed or blocked checks</div></div></div>

@@ -27,11 +27,11 @@ const shortDate = (value?: string) => value ? new Date(value).toLocaleDateString
 const statusLabel: Record<Status, string> = { passed: "Passed", failed: "Failed", blocked: "Blocked" };
 
 export default function App() {
- const [runs, setRuns] = useState<Run[]>(demoRuns);
- const [reports, setReports] = useState<Report[]>(demoReports);
+ const [runs, setRuns] = useState<Run[]>([]);
+ const [reports, setReports] = useState<Report[]>([]);
  const [activeSlug, setActiveSlug] = useState(() => location.pathname.split("/").filter(Boolean)[1] || "solana-2048");
  const [ownerWallet, setOwnerWallet] = useState("");
- const [view, setView] = useState<"overview"|"inbox"|"create"|"tester">(() => location.pathname.split("/").filter(Boolean)[0] === "i" ? "inbox" : location.pathname.split("/").filter(Boolean)[0] === "new" ? "create" : "overview");
+ const [view, setView] = useState<"overview"|"inbox"|"create"|"tester">(() => location.pathname.split("/").filter(Boolean)[0] === "i" ? "inbox" : location.pathname.split("/").filter(Boolean)[0] === "new" ? "create" : location.pathname.split("/").filter(Boolean)[0] === "test" ? "tester" : "overview");
  const [search, setSearch] = useState("");
  const [favorites, setFavorites] = useState<string[]>(() => { try { const saved = localStorage.getItem("testtrail-favorites"); return saved ? JSON.parse(saved) as string[] : ["Solana Explorer", "Solana Playground"]; } catch { return ["Solana Explorer", "Solana Playground"]; } });
  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
@@ -53,8 +53,8 @@ export default function App() {
  const isConfigured = Boolean(supabase);
  const activeRun = runs.find(r => r.slug === activeSlug) || runs[0];
  const activeReports = useMemo(() => reports.filter(r => r.run_id === (activeRun?.id || activeRun?.slug)), [reports, activeRun]);
- const allReports = reports;
- const filteredRuns = runs.filter(r => (r.title + " " + r.app_url).toLowerCase().includes(search.toLowerCase()));
+ const allReports = reports.filter(report => { const run = runs.find(item => (item.id || item.slug) === report.run_id); return !run?.owner_wallet || !wallet || run.owner_wallet === wallet; });
+ const filteredRuns = runs.filter(r => (!r.owner_wallet || r.owner_wallet === wallet) && (r.title + " " + r.app_url).toLowerCase().includes(search.toLowerCase()));
 
  useEffect(() => {
   if (!supabase) return;

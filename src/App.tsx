@@ -13,6 +13,15 @@ declare global { interface Window { solana?: WalletProvider } }
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 const supabase: SupabaseClient | null = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
+const apiUrl = supabaseUrl ? supabaseUrl.replace(/\/$/, "") + "/functions/v1/testtrail-api" : "";
+async function api(action: string, body: Record<string, unknown> = {}, token?: string) {
+ if (!apiUrl || !supabaseKey) throw new Error("TestTrail's backend is not configured yet.");
+ const response = await fetch(apiUrl, { method: "POST", headers: { "Content-Type": "application/json", "apikey": supabaseKey, ...(token ? { "Authorization": "Bearer " + token } : {}) }, body: JSON.stringify({ action, ...body }) });
+ const data = await response.json();
+ if (!response.ok || data.error) throw new Error(data.error || "Request failed.");
+ return data;
+}
+const toBase64Url = (bytes: Uint8Array) => { let s = ""; for (const b of bytes) s += String.fromCharCode(b); return btoa(s).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_"); };
 const makeSlug = () => Math.random().toString(36).slice(2, 10);
 const shortDate = (value?: string) => value ? new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "Just now";
 const statusLabel: Record<Status, string> = { passed: "Passed", failed: "Failed", blocked: "Blocked" };
@@ -28,7 +37,9 @@ export default function App() {
  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
  useEffect(() => { try { localStorage.setItem("testtrail-favorites", JSON.stringify(favorites)); } catch { /* session-only fallback */ } }, [favorites]);
  function toggleFavorite(name: string) { setFavorites(current => current.includes(name) ? current.filter(item => item !== name) : [...current, name]); }
- const [wallet, setWallet] = useState("");
+ const [wallet, setWallet] = useState(() => { try { return sessionStorage.getItem("testtrail-wallet") || ""; } catch { return ""; } });
+ const [sessionToken, setSessionToken] = useState(() => { try { return sessionStorage.getItem("testtrail-session") || ""; } catch { return ""; } });
+ const [publicLoading, setPublicLoading] = useState(false);
  const [walletBusy, setWalletBusy] = useState(false);
  const [notice, setNotice] = useState("");
  const [createTitle, setCreateTitle] = useState("");
@@ -48,20 +59,17 @@ export default function App() {
  const filteredRuns = runs.filter(r => (!r.owner_wallet || r.owner_wallet === wallet) && (r.title + " " + r.app_url).toLowerCase().includes(search.toLowerCase()));
 
  useEffect(() => {
-  if (!supabase) return;
   let alive = true;
-  (async () => {
-   const [{ data: runData }, { data: reportData }] = await Promise.all([
-    supabase.from("test_runs").select("*").order("created_at", { ascending: false }),
-    supabase.from("test_reports").select("*").order("created_at", { ascending: false })
-   ]);
-   if (!alive) return;
-   if (runData) setRuns(runData);
-   if (reportData) setReports(reportData);
-   if (runData?.length && !activeSlug && location.pathname.split("/").filter(Boolean)[0] !== "test") setActiveSlug(runData[0].slug);
-  })().catch(() => setNotice("Could not load Supabase data. Check your project URL, anon key, and SQL setup."));
+  const path = location.pathname.split("/").filter(Boolean);
+  if (path[0] === "test" && path[1]) {
+   setPublicLoading(true);
+   api("get-test", { slug: path[1] }).then(data => { if (alive) { setRuns(prev => [data.run, ...prev.filter(r => r.slug !== data.run.slug)]); setActiveSlug(data.run.slug); } }).catch(err => { if (alive) setNotice(err.message); }).finally(() => { if (alive) setPublicLoading(false); });
+   return () => { alive = false; };
+  }
+  if (!sessionToken) { setRuns([]); setReports([]); return () => { alive = false; }; }
+  api("list", {}, sessionToken).then(data => { if (!alive) return; setRuns(data.runs || []); setReports(data.reports || []); if (data.runs?.length && !activeSlug) setActiveSlug(data.runs[0].slug); }).catch(err => { if (alive) { setNotice(err.message); setSessionToken(""); setWallet(""); sessionStorage.removeItem("testtrail-session"); sessionStorage.removeItem("testtrail-wallet"); } });
   return () => { alive = false; };
- }, []);
+ }, [sessionToken]);
 
  useEffect(() => {
   const onPop = () => { const p = location.pathname.split("/").filter(Boolean); setView(p[0] === "i" ? "inbox" : p[0] === "new" ? "create" : p[0] === "test" ? "tester" : "overview"); if ((p[0] === "t" || p[0] === "test" || p[0] === "i") && p[1]) setActiveSlug(p[1]); };
@@ -76,23 +84,32 @@ export default function App() {
  async function connectWallet() {
   if (!window.solana) { setNotice("Install a Solana wallet such as Phantom, then refresh this page."); return; }
   setWalletBusy(true);
-  try { const result = await window.solana.connect(); const address = result.publicKey.toString(); if (!window.solana.signMessage) throw new Error("This wallet cannot sign a login message. Try Phantom or another compatible wallet."); const challenge = new TextEncoder().encode("Sign in to TestTrail\nWallet: " + address + "\nOrigin: " + location.origin + "\nThis signature does not authorize a transaction."); await window.solana.signMessage(challenge, "utf8"); setWallet(address); setOwnerWallet(address); setNotice("Wallet connected and login message signed for this session."); }
-  catch { setNotice("Wallet connection was cancelled."); }
+  try {
+   const result = await window.solana.connect(), address = result.publicKey.toString();
+   if (!window.solana.signMessage) throw new Error("Your wallet cannot sign a login message. Try Phantom.");
+   const challenge = await api("challenge", { wallet: address });
+   const signed = await window.solana.signMessage(new TextEncoder().encode(challenge.message), "utf8");
+   const verified = await api("verify", { wallet: address, signature: toBase64Url(signed.signature) });
+   setWallet(address); setOwnerWallet(address); setSessionToken(verified.token);
+   sessionStorage.setItem("testtrail-wallet", address); sessionStorage.setItem("testtrail-session", verified.token);
+   setNotice("Wallet verified. Your TestTrail workspace is ready.");
+  } catch (err) { setNotice(err instanceof Error ? err.message : "Wallet sign-in was cancelled."); }
   finally { setWalletBusy(false); }
  }
  async function disconnectWallet() {
   try { await window.solana?.disconnect(); } catch { /* local state still clears */ }
-  setWallet(""); setOwnerWallet(""); setNotice("Wallet disconnected.");
+  setWallet(""); setOwnerWallet(""); setSessionToken(""); setRuns([]); setReports([]); sessionStorage.removeItem("testtrail-wallet"); sessionStorage.removeItem("testtrail-session"); setNotice("Wallet disconnected.");
  }
  async function createRun(e: React.FormEvent) {
   e.preventDefault();
   if (!wallet) { setNotice("Connect your Solana wallet before creating a test link."); return; }
   if (!createTitle.trim() || !/^https?:\/\//i.test(createUrl)) { setNotice("Add a project name and a valid http:// or https:// URL."); return; }
-  const run: Run = { slug: makeSlug(), title: createTitle.trim(), app_url: createUrl.trim(), description: createDescription.trim(), network: "devnet", owner_wallet: wallet };
-  if (!supabase) { setNotice("Database is not configured. TestTrail cannot save or share a real link yet."); return; }
-  { const { data, error } = await supabase.from("test_runs").insert(run).select().single(); if (error) { setNotice("Could not save this test run. Check Supabase access policies."); return; } Object.assign(run, data); }
-  setRuns(prev => [run, ...prev]); setCreateTitle(""); setCreateUrl(""); setCreateDescription(""); setActiveSlug(run.slug);
-  navigate("overview", run.slug); setNotice("Test link created. Copy the tester link and send it to your testers.");
+  if (!sessionToken) { setNotice("Connect and verify your wallet before creating a test."); return; }
+  try {
+   const data = await api("create", { title: createTitle.trim(), app_url: createUrl.trim(), description: createDescription.trim() }, sessionToken);
+   const run = data.run as Run; setRuns(prev => [run, ...prev]); setCreateTitle(""); setCreateUrl(""); setCreateDescription(""); setActiveSlug(run.slug);
+   navigate("overview", run.slug); setNotice("Test link created. Copy the tester link and send it to your testers.");
+  } catch (err) { setNotice(err instanceof Error ? err.message : "Could not create test."); }
  }
  async function submitReport(e: React.FormEvent) {
   e.preventDefault();

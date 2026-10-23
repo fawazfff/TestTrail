@@ -140,7 +140,7 @@ export default function App() {
      signature = await connection.sendRawTransaction(signed.serialize());
      await connection.confirmTransaction(signature, "confirmed");
      report.receipt_signature = signature;
-     if (sessionToken && report.id) await api("save-receipt", { report_id: report.id, signature }, sessionToken);
+     if (report.id) await api("attach-receipt", { report_id: report.id, signature });
     } catch (err) { receiptWarning = err instanceof Error ? err.message : "Receipt was not published. The report itself was saved."; }
    }
    if (sessionToken) setReports(prev => [report, ...prev]);
